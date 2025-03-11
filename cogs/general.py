@@ -102,7 +102,7 @@ class SuggestModal(discord.ui.Modal, title="Suggestion"):
         )
 
         suggestion_embed.set_footer(
-            text=f"{interaction.user}", icon_url=interaction.user.avatar.url
+            text=f"{interaction.user}", icon_url=f"https://ava.viadev.xyz/{interaction.user.id}"
         )
 
         suggestion_channel = interaction.guild.get_channel(

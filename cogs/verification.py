@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import random
 import string
-from typing import Optional
+from typing import Optional, List
 
 import discord
 from discord import app_commands
@@ -24,11 +24,11 @@ async def accept_verification(
         {"$unset": {f"pending_verification_message_ids.{message.id}": ""}}
     )
 
-    embed = message.embeds[0]
+    embeds = message.embeds
 
-    embed.set_field_at(len(embed.fields) - 1, name="Status", value="Accepted.")
-    embed.colour = interaction.client.green
-    await message.edit(embed=embed, view=None)
+    embeds[0].set_field_at(len(embeds[0].fields) - 1, name="Status", value="Accepted.")
+    embeds[0].colour = interaction.client.green
+    await message.edit(embeds=embeds, view=None)
 
     await interaction.response.send_message(
         f"You accepted the verification for {member.mention}.", ephemeral=True
@@ -76,13 +76,13 @@ async def is_on_cooldown(interaction: discord.Interaction) -> bool:
 
 
 async def apply_verification_submit_actions(
-    interaction: discord.Interaction, verification_embed: discord.Embed
+    interaction: discord.Interaction, verification_embeds: List[discord.Embed]
 ) -> None:
     verification_requests_channel = interaction.guild.get_channel(
         interaction.client.config["channel_id"]["verification_requests"]
     )
     pending_verification_message_id = await verification_requests_channel.send(
-        embed=verification_embed, view=PendingVerificationView()
+        view=PendingVerificationView(), embeds=verification_embeds
     )
 
     cooldown = datetime.datetime.now() + datetime.timedelta(hours=1)
@@ -148,12 +148,12 @@ class DeniedBotOwnerVerificationModal(discord.ui.Modal, title="Deny Verification
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        embed = self.message.embeds[0]
+        embeds = self.message.embeds
 
-        embed.set_field_at(len(embed.fields) - 1, name="Status", value="Denied.")
-        embed.add_field(name="Reason", value=self.reason.value)
-        embed.colour = interaction.client.red
-        await self.message.edit(embed=embed, view=None)
+        embeds[0].set_field_at(len(embeds[0].fields) - 1, name="Status", value="Denied.")
+        embeds[0].add_field(name="Reason", value=self.reason.value)
+        embeds[0].colour = interaction.client.red
+        await self.message.edit(embeds=embeds, view=None)
 
         guild_data = await interaction.client.mongo.fetch_guild_data()
 
@@ -208,11 +208,11 @@ class PendingVerificationView(discord.ui.View):
         ]
         member = interaction.guild.get_member(user_id)
 
-        embed = interaction.message.embeds[0]
+        embeds = interaction.message.embeds
 
         if member is None:
-            embed.set_field_at(len(embed.fields) - 1, name="Status", value="User left.")
-            await interaction.message.edit(embed=embed, view=None)
+            embeds[0].set_field_at(len(embeds[0].fields) - 1, name="Status", value="User left.")
+            await interaction.message.edit(embeds=embeds, view=None)
             await interaction.client.mongo.update_guild_member_document(
                 member.id, {"$set": {"verification_pending": False}}
             )
@@ -220,7 +220,7 @@ class PendingVerificationView(discord.ui.View):
                 "The user left the server.", ephemeral=True
             )
 
-        if len(embed.fields) == 5:
+        if len(embeds[0].fields) == 5:
             view = discord.ui.View()
             view.add_item(
                 AcceptedBotOwnerVerificationSelect(
@@ -274,7 +274,7 @@ class BotOwnerModal(discord.ui.Modal, title="Apply as a Bot Owner"):
         await interaction.response.send_message(
             "Thank you for completing this modal, you now have 5 minutes to show a proof of you owning the bot. We "
             "highly recommend you to send a screenshot of the Discord Developer Portal showing you owning the bot.\n\n"
-            "**Send the screenshot in the bot's DMs.**",
+            "**Send the screenshot in the bot's DMs.** (Up to 4)",
             ephemeral=True,
         )
 
@@ -300,30 +300,40 @@ class BotOwnerModal(discord.ui.Modal, title="Apply as a Bot Owner"):
         except discord.HTTPException:
             pass
 
-        verification_embed = discord.Embed(
+        verification_embeds = []
+
+        verification_embeds.append(discord.Embed(
             title="Bot Owner Verification Request",
             description=f"{interaction.user.mention} ({interaction.user}) is wanting to enter the server.",
             color=interaction.client.color,
             timestamp=discord.utils.utcnow(),
-        )
+            url = "https://google.com" # url is required to have multiple images on one embed
+        ))
 
-        verification_embed.add_field(
+        verification_embeds[0].add_field(
             name="Application ID", value=self.application_id.value
         )
-        verification_embed.add_field(name="Guild Count", value=self.guild_count.value)
-        verification_embed.add_field(
+        verification_embeds[0].add_field(name="Guild Count", value=self.guild_count.value)
+        verification_embeds[0].add_field(
             name="Support Server Invite", value=self.support_server_invite.value
         )
-        verification_embed.add_field(
+        verification_embeds[0].add_field(
             name="OAuth URL", value=self.oauth_url.value, inline=False
         )
-        verification_embed.add_field(name="Status", value="Pending", inline=False)
+        verification_embeds[0].add_field(name="Status", value="Pending", inline=False)
 
-        verification_embed.set_thumbnail(url=interaction.user.display_avatar)
+        verification_embeds[0].set_thumbnail(url=interaction.user.display_avatar)
 
-        verification_embed.set_image(url=msg.attachments[0].url)
+        verification_embeds[0].set_image(url=msg.attachments[0].url)
 
-        await apply_verification_submit_actions(interaction, verification_embed)
+        if len(msg.attachments) > 1:
+            for i in range(1, min(len(msg.attachments), 4)): # loop for attachments index 1-3 if they exist
+                verification_embeds.append(discord.Embed(
+                    url = "https://google.com"
+                ))
+                verification_embeds[i].set_image(url=msg.attachments[i].url)
+
+        await apply_verification_submit_actions(interaction, verification_embeds)
 
 
 class LibraryDeveloperModal(discord.ui.Modal, title="Apply as a Library Developer"):
@@ -364,7 +374,7 @@ class LibraryDeveloperModal(discord.ui.Modal, title="Apply as a Library Develope
 
         verification_embed.set_thumbnail(url=interaction.user.display_avatar)
 
-        await apply_verification_submit_actions(interaction, verification_embed)
+        await apply_verification_submit_actions(interaction, [verification_embed])
 
 
 class BotTeamModal(discord.ui.Modal, title="Apply as a Bot Team Member"):
